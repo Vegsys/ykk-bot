@@ -9,8 +9,11 @@ from flask import Flask, request
 
 # === Настройки ===
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID", "0")
+ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID")
 WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL")
+
+if not ADMIN_ID:
+    raise ValueError("❌ Ошибка: TELEGRAM_ADMIN_ID не задан!")
 
 if not TOKEN:
     raise ValueError("❌ Ошибка: TELEGRAM_BOT_TOKEN не задан!")
@@ -103,9 +106,11 @@ def webhook():
     try:
         update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
         bot.process_new_updates([update])
+        return "OK", 200
     except Exception as e:
         print(f"[Ошибка вебхука]: {e}")
-    return "OK", 200  # <-- важно, чтобы Telegram получил ответ
+        return "Error", 500  # Явный статус ошибки
+
 
 
 @app.route("/", methods=["GET"])
