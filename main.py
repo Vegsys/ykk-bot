@@ -6,23 +6,43 @@ import telebot
 from telebot import types
 from datetime import datetime
 from flask import Flask, request
+import asyncio # Добавлено для возможной будущей асинхронности
 
-# === Настройки ===
+# === 1. Настройки и Инициализация ===
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID")
 WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL")
+PORT = int(os.environ.get("PORT", 10000)) # Используем переменную PORT, которую дает Render
 
 if not ADMIN_ID:
     raise ValueError("❌ Ошибка: TELEGRAM_ADMIN_ID не задан!")
-
 if not TOKEN:
     raise ValueError("❌ Ошибка: TELEGRAM_BOT_TOKEN не задан!")
 
+# Инициализация бота и Flask
 bot = telebot.TeleBot(TOKEN, threaded=True)
 app = Flask(__name__)
 
-# === Приветствие по времени ===
+
+# === 2. ОБЯЗАТЕЛЬНАЯ УСТАНОВКА WEBHOOK (Вынесено из __main__) ===
+bot.remove_webhook()
+if WEBHOOK_URL:
+    full_url = f"{WEBHOOK_URL.rstrip('/')}/{TOKEN}"
+    try:
+        # Установка вебхука происходит при импорте файла Gunicorn'ом
+        bot.set_webhook(url=full_url)
+        print(f"🌐 Webhook успешно установлен: {full_url}")
+    except Exception as e:
+        print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось установить Webhook! Проверьте RENDER_EXTERNAL_URL и токен. Ошибка: {e}")
+
+else:
+    print("⚠️ Переменная RENDER_EXTERNAL_URL не указана! Бот не сможет принимать сообщения.")
+
+
+# === 3. Логика Бота ===
+
 def greeting():
+    """Приветствие в зависимости от времени суток."""
     hour = datetime.now().hour
     if 5 <= hour < 12:
         return "Доброе утро 🌅"
@@ -33,15 +53,17 @@ def greeting():
     else:
         return "Доброй ночи 🌙"
 
-# === Главное меню ===
 def main_menu():
+    """Создание клавиатуры главного меню."""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row("📘 Каталог", "🛒 Сделать заказ")
     return markup
 
-# === Команда /start ===
 @bot.message_handler(commands=["start"])
 def start(message):
+    """Обработчик команды /start."""
+    print(f"✅ Получена команда /start от чата ID: {message.chat.id}") # Для отладки
+    
     name = message.from_user.first_name or ""
     bot.send_message(
         message.chat.id,
@@ -55,9 +77,9 @@ def start(message):
         reply_markup=main_menu(),
     )
 
-# === Каталог ===
 @bot.message_handler(func=lambda msg: msg.text == "📘 Каталог")
 def catalog(message):
+    """Обработчик кнопки Каталог."""
     bot.send_message(
         message.chat.id,
         "📎 Наш каталог YKK (PDF):\n"
@@ -66,9 +88,9 @@ def catalog(message):
         reply_markup=main_menu(),
     )
 
-# === Заказ ===
 @bot.message_handler(func=lambda msg: msg.text == "🛒 Сделать заказ")
 def order(message):
+    """Начало процесса оформления заказа."""
     msg = bot.send_message(
         message.chat.id,
         "🧵 Введите детали заказа (тип молнии, длина, количество):",
@@ -76,6 +98,7 @@ def order(message):
     bot.register_next_step_handler(msg, handle_order)
 
 def handle_order(message):
+    """Обработка текста заказа и отправка админу."""
     order_text = message.text.strip()
     if not order_text:
         bot.send_message(message.chat.id, "Пожалуйста, введите детали заказа.")
@@ -98,32 +121,31 @@ def handle_order(message):
             parse_mode="Markdown",
         )
     except Exception as e:
-        print(f"[Ошибка отправки админу]: {e}")
+        print(f"[Ошибка отправки админу {ADMIN_ID}]: {e}")
 
-# === Webhook для Telegram ===
+
+# === 4. Webhook и Flask-роуты ===
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
+    """Основной роут, куда Telegram отправляет обновления."""
     try:
-        update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
-        bot.process_new_updates([update])
-        return "OK", 200
+        if request.headers.get('content-type') == 'application/json':
+            update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
+            bot.process_new_updates([update])
+            return "OK", 200
+        else:
+            return "Content-Type must be application/json", 400
     except Exception as e:
-        print(f"[Ошибка вебхука]: {e}")
-        return "Error", 500  # Явный статус ошибки
-
-
+        print(f"[Ошибка при обработке Webhook-запроса]: {e}")
+        return "Error", 500
 
 @app.route("/", methods=["GET"])
 def index():
+    """Стартовая страница для проверки работоспособности сервера."""
     return "✅ YKK Shop Bot стабильно работает 24/7 на Render!", 200
 
-# === Запуск ===
+
+# === 5. Запуск для локальной разработки (Gunicorn игнорирует этот блок) ===
 if __name__ == "__main__":
-    bot.remove_webhook()
-    if WEBHOOK_URL:
-        full_url = f"{WEBHOOK_URL.rstrip('/')}/{TOKEN}"
-        bot.set_webhook(url=full_url)
-        print(f"🌐 Webhook успешно установлен: {full_url}")
-    else:
-        print("⚠️ Переменная RENDER_EXTERNAL_URL не указана!")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    print(f"🚀 Запуск Flask сервера для локальной отладки на порту {PORT}")
+    app.run(host="0.0.0.0", port=PORT, debug=True)
