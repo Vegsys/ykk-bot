@@ -6,13 +6,14 @@ import telebot
 from telebot import types
 from datetime import datetime
 from flask import Flask, request
-import asyncio # Добавлено для возможной будущей асинхронности
+import asyncio 
+import json # Добавлен для удобства работы с JSON-строками в Python
 
 # === 1. Настройки и Инициализация ===
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID")
 WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL")
-PORT = int(os.environ.get("PORT", 10000)) # Используем переменную PORT, которую дает Render
+PORT = int(os.environ.get("PORT", 10000))
 
 if not ADMIN_ID:
     raise ValueError("❌ Ошибка: TELEGRAM_ADMIN_ID не задан!")
@@ -24,7 +25,7 @@ bot = telebot.TeleBot(TOKEN, threaded=True)
 app = Flask(__name__)
 
 
-# === 2. ОБЯЗАТЕЛЬНАЯ УСТАНОВКА WEBHOOK (Вынесено из __main__) ===
+# === 2. ОБЯЗАТЕЛЬНАЯ УСТАНОВКА WEBHOOK (Вынесено из __main__!) ===
 bot.remove_webhook()
 if WEBHOOK_URL:
     full_url = f"{WEBHOOK_URL.rstrip('/')}/{TOKEN}"
@@ -33,7 +34,7 @@ if WEBHOOK_URL:
         bot.set_webhook(url=full_url)
         print(f"🌐 Webhook успешно установлен: {full_url}")
     except Exception as e:
-        print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось установить Webhook! Проверьте RENDER_EXTERNAL_URL и токен. Ошибка: {e}")
+        print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось установить Webhook! Ошибка: {e}")
 
 else:
     print("⚠️ Переменная RENDER_EXTERNAL_URL не указана! Бот не сможет принимать сообщения.")
@@ -62,7 +63,8 @@ def main_menu():
 @bot.message_handler(commands=["start"])
 def start(message):
     """Обработчик команды /start."""
-    print(f"✅ Получена команда /start от чата ID: {message.chat.id}") # Для отладки
+    # Эту строку мы ждем в логах!
+    print(f"✅ Получена команда /start от чата ID: {message.chat.id}")
     
     name = message.from_user.first_name or ""
     bot.send_message(
@@ -124,13 +126,20 @@ def handle_order(message):
         print(f"[Ошибка отправки админу {ADMIN_ID}]: {e}")
 
 
-# === 4. Webhook и Flask-роуты ===
+# === 4. Webhook и Flask-роуты (Обновлено: Добавлено логгирование входящих данных) ===
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     """Основной роут, куда Telegram отправляет обновления."""
     try:
+        # Читаем сырые данные из запроса
+        data = request.stream.read().decode("utf-8")
+        
+        # <<< НОВАЯ КРИТИЧЕСКАЯ ОТЛАДОЧНАЯ СТРОКА >>>
+        print(f"⬅️ Получен Webhook Update (RAW): {data}")
+        # <<< НОВАЯ КРИТИЧЕСКАЯ ОТЛАДОЧНАЯ СТРОКА >>>
+
         if request.headers.get('content-type') == 'application/json':
-            update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
+            update = telebot.types.Update.de_json(data)
             bot.process_new_updates([update])
             return "OK", 200
         else:
@@ -145,7 +154,7 @@ def index():
     return "✅ YKK Shop Bot стабильно работает 24/7 на Render!", 200
 
 
-# === 5. Запуск для локальной разработки (Gunicorn игнорирует этот блок) ===
+# === 5. Запуск для локальной разработки ===
 if __name__ == "__main__":
     print(f"🚀 Запуск Flask сервера для локальной отладки на порту {PORT}")
     app.run(host="0.0.0.0", port=PORT, debug=True)
