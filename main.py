@@ -1,3 +1,6 @@
+# === YKK Shop Bot (Render-ready version) ===
+# Автор: @Vegsys | 2025
+
 import os
 import telebot
 from telebot import types
@@ -6,8 +9,11 @@ from flask import Flask, request
 
 # --- Настройки ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID")
+ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID", "0")
 WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL")
+
+if not TOKEN:
+    raise ValueError("Ошибка: TELEGRAM_BOT_TOKEN не задан!")
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
@@ -51,39 +57,45 @@ def start(message):
 def catalog(message):
     bot.send_message(
         message.chat.id,
-        "📎 Вот наш каталог молний YKK (PDF):\nhttps://example.com/ykk_catalog.pdf",
+        "📎 Наш каталог YKK (PDF):\n[Скачать каталог](https://disk.yandex.ru/i/ytpOf5X_TUNBBw)",
+        parse_mode="Markdown",
         reply_markup=main_menu(),
     )
 
 # --- Заказ ---
 @bot.message_handler(func=lambda msg: msg.text == "🛒 Сделать заказ")
 def order(message):
-    bot.send_message(
+    msg = bot.send_message(
         message.chat.id,
         "🧵 Введите детали заказа (например: тип молнии, длина, количество):",
     )
-    bot.register_next_step_handler(message, handle_order)
+    bot.register_next_step_handler(msg, handle_order)
 
 def handle_order(message):
-    order_text = message.text
+    order_text = message.text.strip()
+    if not order_text:
+        bot.send_message(message.chat.id, "Пожалуйста, введите детали заказа.")
+        return
+
+    # Ответ пользователю
     bot.send_message(
         message.chat.id,
-        "✅ Спасибо! Ваш заказ принят.\nМы свяжемся с вами в ближайшее время.",
+        "✅ Спасибо! Ваш заказ принят.\nМенеджер свяжется с вами в ближайшее время.",
         reply_markup=main_menu(),
     )
 
-    # Сообщение админу
+    # Уведомление админу
     try:
         bot.send_message(
             ADMIN_ID,
             f"📦 *Новый заказ!*\n\n"
-            f"От: @{message.from_user.username or 'Без username'}\n"
-            f"Имя: {message.from_user.first_name}\n"
-            f"Заказ: {order_text}",
+            f"👤 От: @{message.from_user.username or 'Без username'}\n"
+            f"🧾 Имя: {message.from_user.first_name}\n"
+            f"💬 Заказ: {order_text}",
             parse_mode="Markdown",
         )
     except Exception as e:
-        print(f"Ошибка отправки админу: {e}")
+        print(f"[Ошибка отправки админу]: {e}")
 
 # --- Flask Webhook ---
 @app.route(f"/{TOKEN}", methods=["POST"])
@@ -94,10 +106,15 @@ def webhook():
 
 @app.route("/", methods=["GET"])
 def index():
-    return "✅ YKK Shop bot работает!"
+    return "✅ YKK Shop Bot работает стабильно 24/7!", 200
 
+# --- Запуск ---
 if __name__ == "__main__":
     bot.remove_webhook()
     if WEBHOOK_URL:
-        bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+        full_url = f"{WEBHOOK_URL.rstrip('/')}/{TOKEN}"
+        bot.set_webhook(url=full_url)
+        print(f"🌐 Webhook установлен: {full_url}")
+    else:
+        print("⚠️ Переменная RENDER_EXTERNAL_URL не задана!")
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
