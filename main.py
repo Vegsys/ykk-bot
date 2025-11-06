@@ -101,12 +101,12 @@ def handle_order(message):
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     try:
-        json_str = request.get_data(as_text=True)
-        update = telebot.types.Update.de_json(json_str)
+        update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
         bot.process_new_updates([update])
     except Exception as e:
-        print(f"[Webhook error]: {e}")
-    return "OK", 200  # Обязательно возвращаем 200 OK!
+        print(f"[Ошибка вебхука]: {e}")
+    return "OK", 200  # <-- важно, чтобы Telegram получил ответ
+
 
 @app.route("/", methods=["GET"])
 def index():
