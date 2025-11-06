@@ -21,7 +21,7 @@ if not TOKEN:
     raise ValueError("❌ Ошибка: TELEGRAM_BOT_TOKEN не задан!")
 
 # Инициализация бота и Flask
-bot = telebot.TeleBot(TOKEN, threaded=True)
+bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 
