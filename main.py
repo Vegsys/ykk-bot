@@ -117,4 +117,4 @@ if __name__ == "__main__":
         print(f"🌐 Webhook установлен: {full_url}")
     else:
         print("⚠️ Переменная RENDER_EXTERNAL_URL не задана!")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
